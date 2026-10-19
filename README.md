@@ -4,7 +4,7 @@
 
 测试环境：Android 17 + KernelSU；FlClash 0.8.98；Clash Meta for Android 2.11.34.Meta。
 
-**最终推荐配置：** FlClash 只用规则（`GEOSITE,category-ads-all,REJECT`）并关闭「覆写 DNS」；CMFA 用「复制 File 配置 + 规则」；同一时间只开一个代理。
+**最终推荐配置：** FlClash 只用规则（`GEOSITE,category-ads-all,REJECT`）并关闭「覆写 DNS」；CMFA 使用 `fake-ip` + 规则（本机用 URL 缓存方式实施，已禁用该订阅的自动更新；长期可用 File 副本）；同一时间只开一个代理。
 
 ---
 
@@ -129,6 +129,8 @@ CMFA 2.11.34 对 URL 类型的配置是只读的（源码中 `configurationEdita
 
 ### 4.3 备选：DNS 覆写 + redir-host（不改规则）
 
+> 本机已于 2026-10-19 从 `redir-host` 改回 `fake-ip`；`redir-host` 只作为「不想改配置」时的备选，且会明显变慢。
+
 设置 → 覆写 → DNS：
 
 | 字段 | 填什么 |
@@ -143,6 +145,19 @@ CMFA 2.11.34 对 URL 类型的配置是只读的（源码中 `configurationEdita
 - 优点：URL 订阅完全不用改，订阅更新也不影响；覆写保存在 `override.json`。
 - 缺点：只拦 DNS 层；App 自带 DoH/DoT 或直接走 HTTP 代理的流量会绕过；`redir-host` 比 `fake-ip` 慢，实测会明显增加延迟。
 
+### 4.4 URL 缓存方式（本机实施，需 root）
+
+如果不想复制 File 配置，也可以直接改 CMFA 缓存的 URL 配置：
+
+1. 停止 CMFA：`am force-stop com.github.metacubex.clash.meta`；
+2. 备份 `files/imported/<uuid>/config.yaml`、`files/processing/config.yaml`、`files/clash/override.json` 和 `databases/profiles*`；
+3. 在 `imported/<uuid>/config.yaml` 和 `processing/config.yaml` 的 `rules:` 第一条插入规则；
+4. `override.json` 改为 `"enhanced-mode": "fake-ip"`；
+5. 把该订阅的 `interval` 设为 `0`（禁用自动更新）；
+6. 重启 CMFA，确认两处 `config.yaml` 仍有规则。
+
+注意：手动点「更新」会重新下载并覆盖规则；需要长期免维护时，用 4.2 的 File 副本方案。本机最终采用的是这种方式：`fake-ip` + 规则 + 自动更新禁用。
+
 ---
 
 ## 5. 为什么处理后网络会变慢
@@ -151,6 +166,7 @@ CMFA 2.11.34 对 URL 类型的配置是只读的（源码中 `configurationEdita
    - `redir-host` 需要先解析出真实 IP 再连接；
    - `fake-ip` 可以立即返回假 IP，连接时再按域名分流；
    - CMFA 用了 4.3 的 `redir-host` 时，每个新域名都会多一次本地 DNS 往返。
+   - 本机已于 2026-10-19 把 CMFA 改回 `fake-ip`，此项已消除。
 
 2. **FlClash 打开 DNS 覆写后，整套 DNS 配置被替换**
    - `fake-ip-filter` 从订阅的大列表变成只有 `*.lan`、`localhost.ptlogin2.qq.com` 等极少数条目；
@@ -175,6 +191,7 @@ CMFA 2.11.34 对 URL 类型的配置是只读的（源码中 `configurationEdita
 
 - **只想稳定去广告（本指南最终采用）**：FlClash 关闭「覆写 DNS」，保留 `GEOSITE` 规则。这样恢复订阅原本的 DoH + 完整 fake-ip-filter，通常最快。
 - **本次最终状态**：`overrideDns=false`；DNS 恢复为订阅自带 DoH + 完整 fake-ip-filter；`GEOSITE` 规则仍在第一条。实测走代理 Google 约 0.17–0.19 秒、Baidu 约 0.11–0.18 秒；广告域名仍约 0.02 秒失败。
+- **CMFA 最终状态**：`override.json` 的 `enhanced-mode=fake-ip`；`rules` 第一条为 `GEOSITE,category-ads-all,REJECT`；该 URL 订阅 `interval=0`（自动更新禁用）。
 - **如果坚持让 AGH 接管 DNS**：
   - 删除 `nameserver-policy` 里的 `geosite:cn → DoH`，让国内域名走 AGH/普通 UDP；
   - 清空 `fallback`，或换成国内 DoH；

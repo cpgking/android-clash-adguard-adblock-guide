@@ -6,7 +6,10 @@ FlClash / Clash Meta + AdGuardHomeForRoot 共存去广告方案
   · FlClash：只保留规则 GEOSITE,category-ads-all,REJECT；
     关闭「覆写 DNS」（overrideDns=false），恢复订阅自带 DoH + 完整 fake-ip-filter。
     这样去广告不受影响，速度最快。
-  · CMFA：优先用「复制成 File 配置 + 规则」；redir-host 仅作备选（会变慢）。
+  · CMFA：已改为 fake-ip，并在配置的 rules 第一条加入规则；
+    该 URL 订阅的自动更新已设为 0（禁用），避免更新覆盖规则。
+    长期免维护可改用「复制成 File 配置 + 规则」。
+  · redir-host 仅作备选（会明显变慢）。
   · 同一时间只开 FlClash 或 CMFA 其中一个。
 
 一、问题现象
@@ -114,6 +117,13 @@ function main(config, profileName) {
       AGH 仍然通过 iptables 过滤直连/非代理流量的 DNS。
       广告拦截由规则层完成，所以不受影响。
 
+CMFA 最终配置（2026-10-19 已实施）：
+  override.json enhanced-mode = fake-ip
+  nameserver                   = 127.0.0.1:5591
+  default-nameserver           = 114.114.114.114 / 223.5.5.5 / 119.29.29.29
+  rules 第一条                 = GEOSITE,category-ads-all,REJECT
+  自动更新                     = 已禁用（interval=0）
+
 1. FlClash 运行时配置已生效：
    /data/data/com.follow.clash/files/config.yaml 第 820 行：
      - "GEOSITE,category-ads-all,REJECT"
@@ -186,6 +196,14 @@ function main(config, profileName) {
   · 两者 mixed-port 都是 7890。
   测试 CMFA 前先停止 FlClash（停止连接并杀掉后台），AGH 不用动。
 
+本机实施（2026-10-19）：
+  · override.json 已改为 "enhanced-mode": "fake-ip"；
+  · 在 imported/<uuid>/config.yaml 和 processing/config.yaml 的
+    rules: 第一条加入 GEOSITE,category-ads-all,REJECT；
+  · 该订阅的自动更新已设为 0（禁用），URL 订阅仍保留。
+  注意：以后手动点「更新」会重新下载并覆盖规则；
+        需要更新节点时，更新后重新加规则，或改用 File 副本方案。
+
 1. 为什么看不到 rules
    当前订阅是 URL 类型。CMFA 2.11.34 对 URL 类型的配置是只读的
    （FilesActivity 里 configurationEditable = (type != Url)）：
@@ -212,6 +230,8 @@ function main(config, profileName) {
    需要重新复制/重新加规则。
 
 3. 备选：不改规则，用 DNS 覆写让 AGH 拦广告
+   （本机已于 2026-10-19 改回 fake-ip，不再使用 redir-host；
+     这里保留作为不改规则时的备选。）
    设置 → 覆写 → DNS：
      增强模式：redir-host
      Name Server：127.0.0.1:5591
@@ -236,6 +256,7 @@ function main(config, profileName) {
 九、为什么处理后网络会变慢
 ----------------------------
 1. redir-host 比 fake-ip 慢（CMFA 的 DNS 备选方案）
+   （2026-10-19 已把 CMFA 改回 fake-ip，这个减速来源已消除。）
    · redir-host 要求先解析出真实 IP 再连接；
    · fake-ip 可以立即返回假 IP，连接时再按域名分流；
    · CMFA 用 redir-host 时，每个新域名都会多一次本地 DNS 往返。
