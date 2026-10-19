@@ -1,6 +1,13 @@
-FlClash + AdGuardHomeForRoot 共存去广告方案
+FlClash / Clash Meta + AdGuardHomeForRoot 共存去广告方案
 ==================================================
-记录时间：2026-10-19
+记录时间：2026-10-19（2026-10-19 复核更新）
+
+最终推荐配置（先看这里）：
+  · FlClash：只保留规则 GEOSITE,category-ads-all,REJECT；
+    关闭「覆写 DNS」（overrideDns=false），恢复订阅自带 DoH + 完整 fake-ip-filter。
+    这样去广告不受影响，速度最快。
+  · CMFA：优先用「复制成 File 配置 + 规则」；redir-host 仅作备选（会变慢）。
+  · 同一时间只开 FlClash 或 CMFA 其中一个。
 
 一、问题现象
 ------------
@@ -55,7 +62,7 @@ function main(config, profileName) {
    · 如果只用系统代理模式，不认系统代理的 App 本来就没法访问外网，
      这是系统代理的覆盖面问题，不是故障。
 
-4.（可选）让 FlClash 的 DNS 也走 AdGuard Home
+4.（可选，实测会略慢）让 FlClash 的 DNS 也走 AdGuard Home
    工具 → 进阶配置 → DNS，界面字段对应关系如下：
 
      「域名服务器」（副标题：用于解析域名）
@@ -73,7 +80,7 @@ function main(config, profileName) {
               127.0.0.1:5591
               223.5.5.5
               119.29.29.29
-         ← 当前值 127.0.0.1:5591 是可用的；它只负责引导解析，
+         ← 这个值是可用的；它只负责引导解析，
            不是广告过滤入口，也不是 Nameservers
          ← 注意：它不是 Nameservers，不要填错到这里
 
@@ -84,31 +91,31 @@ function main(config, profileName) {
    操作：点「域名服务器」→ 添加 127.0.0.1:5591 → 保存。
 
    注意：
-   · 必须确保「覆写 DNS」开关是打开的（当前 overrideDns=true），
-     只改字段不打开开关是无效的；
+   · 必须真正打开「覆写 DNS」开关，只改字段不打开开关是无效的；
    · fake-ip 模式下它主要影响 DIRECT 直连的解析，
      不能替代第 1 步的规则层拦截；
    · 如果「域名服务器」只填 AGH，AGH 挂掉时 FlClash 的 DNS 也会挂，
-     不想有单点依赖就再保留一个 DoH 作为备选。
+     不想有单点依赖就再保留一个 DoH 作为备选；
+   · 实测开启后会略慢（原因见第九节）。最终采用的是：
+     关闭「覆写 DNS」，只保留规则层拦截。
 
-四、实测结果（2026-10-19 实测）
+四、实测结果（2026-10-19，关闭 DNS 覆写后的最终状态）
 ----------------------------------
 最终生效配置（复核通过）：
-  overrideDns = true
-  域名服务器       = 127.0.0.1:5591
-  默认域名服务器   = 114.114.114.114 / 119.29.29.29 / 223.5.5.5
-  代理域名服务器   = https://doh.pub/dns-query
+  overrideDns      = false（为了速度已关闭）
+  域名服务器       = 订阅自带 DoH（223.5.5.5 / doh.pub / alidns + DoT）
+  默认域名服务器   = 订阅自带（system + 119 / 223 / 114 等）
+  代理域名服务器   = 订阅自带 DoH
   DNS 模式         = fake-ip
+  fake-ip-filter   = 订阅完整列表（不是只有 *.lan）
   规则第一条       = GEOSITE,category-ads-all,REJECT
 
-可选加强（不是必须）：
-  · nameserver-policy 里的 geosite:cn → https://doh.pub/dns-query
-    会让国内域名绕过 AGH；
-  · fallback（tls://8.8.4.4、tls://1.1.1.1）也可能让部分境外域名绕过 AGH。
-  广告目前由规则层拦截，不受影响；若想让 AGH 接管更多解析，可清空这两项。
+说明：关闭 DNS 覆写后，FlClash 不再把 DNS 转发给 AGH；
+      AGH 仍然通过 iptables 过滤直连/非代理流量的 DNS。
+      广告拦截由规则层完成，所以不受影响。
 
 1. FlClash 运行时配置已生效：
-   /data/data/com.follow.clash/files/config.yaml 第 740 行：
+   /data/data/com.follow.clash/files/config.yaml 第 820 行：
      - "GEOSITE,category-ads-all,REJECT"
    该规则位于 rules 列表第一条，优先于订阅自带规则。
 
@@ -129,6 +136,11 @@ function main(config, profileName) {
 4. AdGuard Home 仍正常：
    doubleclick.net → 0.0.0.0
    www.baidu.com   → 正常解析
+
+5. 关闭 DNS 覆写后的速度（多次采样）：
+   走代理：Google 约 0.17–0.19 秒；Baidu 约 0.11–0.18 秒；
+   广告域名仍约 0.02 秒失败。
+   与开启 AGH DNS 覆写时相比，Google 略快，Baidu 基本持平。
 
 五、注意事项
 ------------
@@ -182,7 +194,7 @@ function main(config, profileName) {
        但 URL 类型只能看、不能改。
 
 2. 推荐：复制成 File 配置后再加规则
-   配置 → 你的订阅右侧"⋮" → 复制
+   配置 → 当前订阅右侧"⋮" → 复制
    → CMFA 会生成一个 File 类型的本地副本（可直接编辑）
    → 自动进入"参数"页 → 点「浏览文件」
    → 打开 config.yaml
@@ -208,7 +220,7 @@ function main(config, profileName) {
    这样 CMFA 会把域名交给 AGH 解析，广告域名返回 0.0.0.0 直接失败。
    优点：URL 订阅不用改，订阅更新不影响；覆写保存在 override.json。
    缺点：只拦 DNS 层；App 自带 DoH/DoT 或直接走 HTTP 代理的流量会绕过；
-         redir-host 兼容性不如 fake-ip。
+         redir-host 兼容性不如 fake-ip，且实测会明显变慢。
 
    如果已经做了第 2 步的规则，这一步可改成：
      增强模式保持 fake-ip，Name Server 填 127.0.0.1:5591。
@@ -220,4 +232,56 @@ function main(config, profileName) {
      curl -x http://127.0.0.1:7890 -o /dev/null -w '%{http_code}\n' https://pagead2.googlesyndication.com/
    正常站点应仍可用：
      curl -x http://127.0.0.1:7890 -o /dev/null -w '%{http_code}\n' https://www.google.com/generate_204
+
+九、为什么处理后网络会变慢
+----------------------------
+1. redir-host 比 fake-ip 慢（CMFA 的 DNS 备选方案）
+   · redir-host 要求先解析出真实 IP 再连接；
+   · fake-ip 可以立即返回假 IP，连接时再按域名分流；
+   · CMFA 用 redir-host 时，每个新域名都会多一次本地 DNS 往返。
+
+2. FlClash 打开 DNS 覆写后，整套 DNS 配置被替换
+   · fake-ip-filter 从订阅的大列表变成只有 *.lan、localhost.ptlogin2.qq.com
+     等极少数条目；
+   · 音乐、视频、STUN、NTP 等域名原来走真实 DNS，现在可能被 fake-ip 接管；
+   · nameserver-policy 里如果有 geosite:cn → https://doh.pub/dns-query，
+     国内域名会走加密 DoH，增加 TLS 握手；
+   · fallback 到 tls://8.8.4.4、tls://1.1.1.1 时，部分域名会多一轮查询，
+     网络不通时还会等待超时；
+   · nameserver 只留 AGH 时，冷缓存多一跳
+     （实测缓存命中约 1ms，首次查询约 35–105ms）。
+
+3. AGH 本身是一跳额外 DNS
+   · 缓存命中很快，但冷查询取决于 AGH 的上游；
+   · 上游慢或使用加密 DNS 时，首次访问会明显变慢。
+
+4. 规则本身开销很小
+   · GEOSITE,category-ads-all,REJECT 的匹配开销通常可以忽略；
+   · 被 REJECT 的广告连接会快速失败（实测约 0.02 秒）；
+   · 某些 App 在广告请求失败后会重试/等待，可能造成轻微延迟。
+
+5. 同时运行两个代理/VPN
+   · FlClash 与 CMFA 同时开会争抢 VPN 和 7890 端口，导致连接异常或变慢。
+
+优化建议：
+  · 只想稳定去广告：FlClash 关闭「覆写 DNS」，保留 GEOSITE 规则。
+    这样恢复订阅原本的 DoH + 完整 fake-ip-filter，通常最快。
+  · 如果坚持让 AGH 接管 DNS：
+      - 删除 nameserver-policy 里的 geosite:cn → DoH；
+      - 清空 fallback，或换成国内 DoH；
+      - 恢复订阅原来的 fake-ip-filter 列表；
+      - 把 AGH 和一个 DoH 一起放进 nameserver 做冗余。
+  · CMFA：增强模式改回 fake-ip，用第 2 步的 File 副本 + 规则；
+    redir-host 仅在没有别的办法时使用。
+  · 同一时间只开一个代理/VPN。
+  · 改完 DNS 后清理缓存并重启应用；首次访问会慢一些，之后恢复。
+
+十、GitHub 仓库
+----------------
+本方案的公开版本（已脱敏，不含订阅链接/token）：
+  https://github.com/cpgking/android-clash-adguard-adblock-guide
+
+包含：
+  · README.md —— 完整指南（含性能分析与优化）
+  · guide.txt —— 纯文本版
 

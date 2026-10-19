@@ -4,6 +4,8 @@
 
 测试环境：Android 17 + KernelSU；FlClash 0.8.98；Clash Meta for Android 2.11.34.Meta。
 
+**最终推荐配置：** FlClash 只用规则（`GEOSITE,category-ads-all,REJECT`）并关闭「覆写 DNS」；CMFA 用「复制 File 配置 + 规则」；同一时间只开一个代理。
+
 ---
 
 ## 1. 问题现象
@@ -65,7 +67,7 @@ rules:
   ...
 ```
 
-### 3.2 可选：DNS 也接 AdGuard Home
+### 3.2 可选：DNS 也接 AdGuard Home（实测会略慢，最终未采用）
 
 工具 → 进阶配置 → DNS → 打开「覆写 DNS」：
 
@@ -80,6 +82,8 @@ rules:
 - 默认域名服务器只能填**纯 IP**（可带端口），不能填 DoH/DoT 网址或域名；
 - 必须真正打开「覆写 DNS」开关，只改字段不打开开关无效；
 - `fake-ip` 模式下 DNS 主要影响直连解析，广告拦截仍主要靠 3.1 的规则。
+
+> 实测开启后速度会略降（原因见第 5 节）。本指南的最终配置是**关闭「覆写 DNS」**，只保留 3.1 的规则；广告仍然会被拦截。
 
 ### 3.3 TUN 还是系统代理
 
@@ -137,7 +141,7 @@ CMFA 2.11.34 对 URL 类型的配置是只读的（源码中 `configurationEdita
 这样 CMFA 会把域名交给 AGH 解析，广告域名返回 `0.0.0.0` 直接失败。
 
 - 优点：URL 订阅完全不用改，订阅更新也不影响；覆写保存在 `override.json`。
-- 缺点：只拦 DNS 层；App 自带 DoH/DoT 或直接走 HTTP 代理的流量会绕过；`redir-host` 比 `fake-ip` 慢。
+- 缺点：只拦 DNS 层；App 自带 DoH/DoT 或直接走 HTTP 代理的流量会绕过；`redir-host` 比 `fake-ip` 慢，实测会明显增加延迟。
 
 ---
 
@@ -169,7 +173,8 @@ CMFA 2.11.34 对 URL 类型的配置是只读的（源码中 `configurationEdita
 
 ### 5.1 优化建议
 
-- **只想稳定去广告**：FlClash 关闭「覆写 DNS」，保留 `GEOSITE` 规则。这样恢复订阅原本的 DoH + 完整 fake-ip-filter，通常最快。
+- **只想稳定去广告（本指南最终采用）**：FlClash 关闭「覆写 DNS」，保留 `GEOSITE` 规则。这样恢复订阅原本的 DoH + 完整 fake-ip-filter，通常最快。
+- **本次最终状态**：`overrideDns=false`；DNS 恢复为订阅自带 DoH + 完整 fake-ip-filter；`GEOSITE` 规则仍在第一条。实测走代理 Google 约 0.17–0.19 秒、Baidu 约 0.11–0.18 秒；广告域名仍约 0.02 秒失败。
 - **如果坚持让 AGH 接管 DNS**：
   - 删除 `nameserver-policy` 里的 `geosite:cn → DoH`，让国内域名走 AGH/普通 UDP；
   - 清空 `fallback`，或换成国内 DoH；
@@ -215,3 +220,8 @@ su -c 'grep -n "category-ads-all" /data/data/com.github.metacubex.clash.meta/fil
 
 - 不要把订阅链接、token、节点密码提交到公开仓库。
 - 本指南不包含任何订阅凭据。
+
+## 9. 仓库文件
+
+- `README.md`：本指南
+- `guide.txt`：同一份指南的纯文本版
